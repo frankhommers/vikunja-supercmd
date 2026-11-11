@@ -1,3 +1,4 @@
+import { getBaseUrl } from "./api";
 import {
   Action,
   ActionPanel,
@@ -8,7 +9,6 @@ import {
   showToast,
   Toast,
   confirmAlert,
-  getPreferenceValues,
   useNavigation,
   launchCommand,
   LaunchType,
@@ -63,8 +63,7 @@ export default function ListProjects() {
   const taskCounts = data?.taskCounts ?? {};
 
   const baseUrl = useMemo(() => {
-    const { apiUrl } = getPreferenceValues<Preferences>();
-    return apiUrl.replace(/\/+$/, "");
+    return getBaseUrl();
   }, []);
 
   const topLevel = projects.filter((p) => !p.parent_project_id);
@@ -103,7 +102,7 @@ export default function ListProjects() {
       await confirmAlert({
         title: `Delete "${project.title}"?`,
         message:
-          "This will delete the project and all its tasks. This cannot be undone.",
+          "This will delete the project and all its tasks. On Vikunja 2.8+, you can restore it from the trash in Vikunja.",
       })
     ) {
       try {

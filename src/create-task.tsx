@@ -1,3 +1,4 @@
+import { getBaseUrl } from "./api";
 import {
   Action,
   ActionPanel,
@@ -5,7 +6,6 @@ import {
   showToast,
   Toast,
   open,
-  getPreferenceValues,
   LaunchType,
   launchCommand,
   getSelectedText,
@@ -121,8 +121,7 @@ export default function CreateTask(
         primaryAction: {
           title: "Open in Vikunja",
           onAction: () => {
-            const { apiUrl } = getPreferenceValues<Preferences>();
-            open(`${apiUrl.replace(/\/+$/, "")}/projects/${projectId}`);
+            open(`${getBaseUrl()}/projects/${projectId}`);
           },
         },
       });
@@ -162,7 +161,7 @@ export default function CreateTask(
             />
             <Action.OpenInBrowser
               title="Open Vikunja"
-              url={getPreferenceValues<Preferences>().apiUrl}
+              url={getBaseUrl()}
               shortcut={{ modifiers: ["cmd"], key: "o" }}
             />
           </ActionPanel.Section>

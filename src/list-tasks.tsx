@@ -1,3 +1,4 @@
+import { getBaseUrl } from "./api";
 import {
   Icon,
   List,
@@ -32,14 +33,13 @@ export default function ListTasks(
 ) {
   const initialProjectId = props.launchContext?.projectId;
   const { defaultProject } = getPreferenceValues<Preferences>();
-  const defaultPref = defaultProject ?? "all";
+  const defaultPref = defaultProject?.trim() || "all";
   const [selectedProject, setSelectedProject] = useState<string>(
     initialProjectId ? String(initialProjectId) : defaultPref,
   );
 
   const baseUrl = useMemo(() => {
-    const { apiUrl } = getPreferenceValues<Preferences>();
-    return apiUrl.replace(/\/+$/, "");
+    return getBaseUrl();
   }, []);
 
   const { data: projects, isLoading: projectsLoading } = useCachedPromise(
@@ -83,7 +83,8 @@ export default function ListTasks(
     if (
       await confirmAlert({
         title: `Delete "${task.title}"?`,
-        message: "This cannot be undone.",
+        message:
+          "On Vikunja 2.8+, you can restore it from the trash in Vikunja.",
       })
     ) {
       try {

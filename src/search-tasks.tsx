@@ -1,10 +1,5 @@
-import {
-  List,
-  showToast,
-  Toast,
-  confirmAlert,
-  getPreferenceValues,
-} from "@raycast/api";
+import { getBaseUrl } from "./api";
+import { List, showToast, Toast, confirmAlert } from "@raycast/api";
 import { useCachedPromise } from "@raycast/utils";
 import { useState } from "react";
 import {
@@ -19,8 +14,7 @@ import { TaskListItem } from "./components/task-list-item";
 export default function SearchTasks() {
   const [searchText, setSearchText] = useState("");
 
-  const { apiUrl } = getPreferenceValues<Preferences>();
-  const baseUrl = apiUrl.replace(/\/+$/, "");
+  const baseUrl = getBaseUrl();
 
   const { data: projects } = useCachedPromise(getProjects, [], {
     keepPreviousData: true,
@@ -56,7 +50,8 @@ export default function SearchTasks() {
     if (
       await confirmAlert({
         title: `Delete "${task.title}"?`,
-        message: "This cannot be undone.",
+        message:
+          "On Vikunja 2.8+, you can restore it from the trash in Vikunja.",
       })
     ) {
       try {

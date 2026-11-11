@@ -46,46 +46,105 @@ export interface TaskInput {
   is_favorite?: boolean;
 }
 
-function getBaseUrl(): string {
+export function getBaseUrl(): string {
   const { apiUrl } = getPreferenceValues<Preferences>();
-  return apiUrl.replace(/\/+$/, "");
+  return apiUrl
+    .trim()
+    .replace(/\/+$/, "")
+    .replace(/\/api\/v[12]$/, "");
 }
 
-function getHeaders(): Record<string, string> {
+function getApiVersion(): "v1" | "v2" {
+  return getPreferenceValues<Preferences>().apiVersion === "v1" ? "v1" : "v2";
+}
+
+async function fetchResponse(
+  path: string,
+  options?: RequestInit,
+): Promise<Response> {
   const { apiToken } = getPreferenceValues<Preferences>();
-  return {
-    Authorization: `Bearer ${apiToken}`,
-    "Content-Type": "application/json",
-  };
-}
-
-async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const url = `${getBaseUrl()}/api/v1${path}`;
-  const response = await fetch(url, {
+  const version = getApiVersion();
+  const url = new URL(`${getBaseUrl()}/api/${version}${path}`);
+  if (version === "v2") url.searchParams.set("format", "markdown");
+  const response = await fetch(url.toString(), {
     ...options,
     headers: {
-      ...getHeaders(),
+      Authorization: `Bearer ${apiToken.trim()}`,
+      "Content-Type":
+        options?.method === "PATCH"
+          ? "application/merge-patch+json"
+          : "application/json",
       ...options?.headers,
     },
   });
-
   if (!response.ok) {
     const body = await response.text();
-    throw new Error(`Vikunja API error (${response.status}): ${body}`);
+    let detail = body;
+    try {
+      const error = JSON.parse(body);
+      detail = error.detail || error.message || error.title || body;
+    } catch {
+      /* A proxy may return plain text instead of JSON. */
+    }
+    throw new Error(`Vikunja API error (${response.status}): ${detail}`);
   }
+  return response;
+}
 
-  return response.json() as Promise<T>;
+async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  const response = await fetchResponse(path, options);
+  const text = await response.text();
+  return text ? (JSON.parse(text) as T) : (undefined as T);
+}
+
+interface Page<T> {
+  items: T[];
+  total_pages: number;
+}
+
+async function requestAll<T>(path: string): Promise<T[]> {
+  const items: T[] = [];
+  for (let page = 1; ; page++) {
+    const separator = path.includes("?") ? "&" : "?";
+    const response = await fetchResponse(
+      `${path}${separator}page=${page}&per_page=100`,
+    );
+    const result = (await response.json()) as T[] | Page<T> | null;
+    const batch = Array.isArray(result) ? result : (result?.items ?? []);
+    items.push(...batch);
+    const totalPages =
+      result && !Array.isArray(result)
+        ? result.total_pages
+        : Number(response.headers.get("x-pagination-total-pages")) || undefined;
+    if (batch.length === 0 || (totalPages !== undefined && page >= totalPages))
+      return items;
+    // Without pagination metadata, continue until an empty page. The server may
+    // cap per_page below the requested value, so a short page is not sufficient.
+  }
+}
+
+function createMethod(): string {
+  return getApiVersion() === "v2" ? "POST" : "PUT";
+}
+
+function updateMethod(): string {
+  return getApiVersion() === "v2" ? "PATCH" : "POST";
 }
 
 export async function getProjects(includeArchived = false): Promise<Project[]> {
-  const projects = await request<Project[]>("/projects");
+  const projects = await requestAll<Project>(
+    `/projects?is_archived=${includeArchived}`,
+  );
   return includeArchived ? projects : projects.filter((p) => !p.is_archived);
 }
 
 export async function createProject(project: ProjectInput): Promise<Project> {
   return request<Project>("/projects", {
-    method: "PUT",
-    body: JSON.stringify(project),
+    method: createMethod(),
+    body: JSON.stringify({
+      ...project,
+      parent_project_id: project.parent_project_id ?? 0,
+    }),
   });
 }
 
@@ -94,8 +153,11 @@ export async function updateProject(
   updates: Partial<ProjectInput & { is_archived: boolean }>,
 ): Promise<Project> {
   return request<Project>(`/projects/${projectId}`, {
-    method: "POST",
-    body: JSON.stringify(updates),
+    method: updateMethod(),
+    body: JSON.stringify({
+      ...updates,
+      ...(updates.parent_project_id === null ? { parent_project_id: 0 } : {}),
+    }),
   });
 }
 
@@ -104,17 +166,19 @@ export async function deleteProject(projectId: number): Promise<void> {
 }
 
 export async function getLabels(): Promise<Label[]> {
-  return request<Label[]>("/labels");
+  return requestAll<Label>("/labels");
 }
 
 export async function createTask(
   projectId: number,
   task: TaskInput,
 ): Promise<Task> {
-  // Vikunja uses PUT for creation
   return request<Task>(`/projects/${projectId}/tasks`, {
-    method: "PUT",
-    body: JSON.stringify(task),
+    method: createMethod(),
+    body: JSON.stringify({
+      ...task,
+      ...(task.due_date === null ? { due_date: "0001-01-01T00:00:00Z" } : {}),
+    }),
   });
 }
 
@@ -122,9 +186,8 @@ export async function addLabelToTask(
   taskId: number,
   labelId: number,
 ): Promise<void> {
-  // Vikunja uses PUT to add labels to tasks
   await request(`/tasks/${taskId}/labels`, {
-    method: "PUT",
+    method: createMethod(),
     body: JSON.stringify({ label_id: labelId }),
   });
 }
@@ -161,25 +224,24 @@ export async function updateTaskLabels(
 }
 
 export async function getProjectTasks(projectId: number): Promise<Task[]> {
-  return request<Task[]>(
+  return requestAll<Task>(
     `/projects/${projectId}/tasks?sort_by=done&order_by=asc`,
   );
 }
 
 export async function getAllTasks(): Promise<Task[]> {
-  return request<Task[]>("/tasks?sort_by=done&order_by=asc");
+  return requestAll<Task>("/tasks?sort_by=done&order_by=asc");
 }
 
 export async function searchTasks(query: string): Promise<Task[]> {
-  return request<Task[]>(
-    `/tasks?s=${encodeURIComponent(query)}&sort_by=done&order_by=asc`,
+  return requestAll<Task>(
+    `/tasks?${getApiVersion() === "v2" ? "q" : "s"}=${encodeURIComponent(query)}&sort_by=done&order_by=asc`,
   );
 }
 
 export async function toggleTaskDone(task: Task): Promise<Task> {
-  // Vikunja uses POST for updates
   return request<Task>(`/tasks/${task.id}`, {
-    method: "POST",
+    method: updateMethod(),
     body: JSON.stringify({ done: !task.done }),
   });
 }
@@ -193,7 +255,12 @@ export async function updateTask(
   updates: Partial<TaskInput & { done: boolean; project_id: number }>,
 ): Promise<Task> {
   return request<Task>(`/tasks/${taskId}`, {
-    method: "POST",
-    body: JSON.stringify(updates),
+    method: updateMethod(),
+    body: JSON.stringify({
+      ...updates,
+      ...(updates.due_date === null
+        ? { due_date: "0001-01-01T00:00:00Z" }
+        : {}),
+    }),
   });
 }

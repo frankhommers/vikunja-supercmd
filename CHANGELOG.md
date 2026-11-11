@@ -1,5 +1,14 @@
 # Changelog
 
+## [Standalone SuperCmd fork] - 2026-11-11
+
+- Import the latest upstream extension and update Raycast API/utilities.
+- Support Vikunja 2.8 API v2: POST creation, merge PATCH updates, q search, Markdown descriptions, paginated envelopes, and empty DELETE responses.
+- Retain selectable API v1 compatibility and fetch all pages for tasks, projects, and labels.
+- Normalize instance URLs, empty default projects, cleared dates, and root project IDs.
+- Update deletion confirmations for Vikunja 2.8 trash behavior.
+- Add API regression tests, CI, and a reproducible SuperCmd bundle.
+
 ## [Updates] - 2026-04-28
 
 - Reorder actions in TaskList
