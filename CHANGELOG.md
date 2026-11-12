@@ -1,5 +1,11 @@
 # Changelog
 
+## [Fix initial project selection] - 2026-11-12
+
+- Keep Create Task's visible project and submitted project in sync, including when SuperCmd omits an untouched dropdown value.
+- Wait for projects to load before mounting the form, and choose the launch project, configured default, or first available project explicitly.
+- Add form regression tests for asynchronous loading, project changes, defaults, launch context, and invalid selections.
+
 ## [Standalone SuperCmd fork] - 2026-11-11
 
 - Import the latest upstream extension and update Raycast API/utilities.

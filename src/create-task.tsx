@@ -9,6 +9,7 @@ import {
   LaunchType,
   launchCommand,
   getSelectedText,
+  getPreferenceValues,
   LaunchProps,
   popToRoot,
 } from "@raycast/api";
@@ -32,19 +33,26 @@ export default function CreateTask(
   const [projects, setProjects] = useState<Project[]>([]);
   const [labels, setLabels] = useState<Label[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [selectedProjectId, setSelectedProjectId] = useState("");
   const argTitle = props.arguments.title?.trim() ?? "";
   const [prefillTitle, setPrefillTitle] = useState(argTitle);
   const [prefillReady, setPrefillReady] = useState(!!argTitle);
   // Prefer projectId passed as a command argument, fallback to launch context if present
   const argProjectId = props.arguments.projectId?.trim();
   const contextProjectId = argProjectId
-    ? parseInt(argProjectId)
+    ? Number(argProjectId)
     : props.launchContext?.projectId;
+  const { defaultProject } = getPreferenceValues<Preferences>();
 
   useEffect(() => {
     async function loadData() {
       try {
         const [p, l] = await Promise.all([getProjects(), getLabels()]);
+        const initialProject =
+          [contextProjectId, Number(defaultProject)]
+            .map((id) => p.find((project) => project.id === id))
+            .find(Boolean) ?? p[0];
+        setSelectedProjectId(initialProject ? String(initialProject.id) : "");
         setProjects(p);
         setLabels(l);
       } catch (error) {
@@ -89,8 +97,10 @@ export default function CreateTask(
       return;
     }
 
-    const projectId = parseInt(values.projectId);
-    if (isNaN(projectId)) {
+    // SuperCmd may omit an untouched dropdown from the submitted values.
+    // Use the same controlled selection that is shown in the form.
+    const projectId = Number(values.projectId || selectedProjectId);
+    if (isLoading || !projects.some((project) => project.id === projectId)) {
       showToast({
         style: Toast.Style.Failure,
         title: "Please select a project",
@@ -168,7 +178,7 @@ export default function CreateTask(
         </ActionPanel>
       }
     >
-      {prefillReady && (
+      {prefillReady && !isLoading && (
         <>
           <Form.TextField
             id="title"
@@ -185,13 +195,8 @@ export default function CreateTask(
           <Form.Dropdown
             id="projectId"
             title="Project"
-            defaultValue={
-              props.arguments.projectId
-                ? String(props.arguments.projectId)
-                : contextProjectId
-                  ? String(contextProjectId)
-                  : undefined
-            }
+            value={selectedProjectId}
+            onChange={setSelectedProjectId}
           >
             {projects.map((project) => (
               <Form.Dropdown.Item
