@@ -6,6 +6,8 @@ const mocks = vi.hoisted(() => ({
   getProjects: vi.fn(),
   createTask: vi.fn(),
   showToast: vi.fn(),
+  open: vi.fn(),
+  popToRoot: vi.fn(),
   preferences: { defaultProject: "all" },
 }));
 
@@ -14,6 +16,7 @@ vi.mock("@raycast/api", () => {
     (name: string) => (props: { children?: ReactNode; actions?: ReactNode }) =>
       createElement(name, props, props.children, props.actions);
   return {
+    Detail: component("Detail"),
     Form: Object.assign(component("Form"), {
       TextField: component("TextField"),
       TextArea: component("TextArea"),
@@ -43,9 +46,9 @@ vi.mock("@raycast/api", () => {
     getPreferenceValues: () => mocks.preferences,
     showToast: mocks.showToast,
     getSelectedText: vi.fn().mockResolvedValue(""),
-    open: vi.fn(),
+    open: mocks.open,
     launchCommand: vi.fn(),
-    popToRoot: vi.fn(),
+    popToRoot: mocks.popToRoot,
   };
 });
 vi.mock("../src/api", () => ({
@@ -99,6 +102,8 @@ beforeEach(() => {
     .mockReset()
     .mockResolvedValue({ id: 99, title: "Regression test" });
   mocks.showToast.mockClear();
+  mocks.open.mockReset().mockResolvedValue(undefined);
+  mocks.popToRoot.mockReset().mockResolvedValue(undefined);
   mocks.preferences.defaultProject = "all";
 });
 afterEach(async () => {
@@ -179,4 +184,64 @@ it("rejects a submitted project that is not in the available projects", async ()
   await mount();
   await submit({ ...formValues, projectId: "11junk" });
   expect(mocks.createTask).not.toHaveBeenCalled();
+});
+
+it("keeps the success action alive and opens the created task before leaving", async () => {
+  await mount();
+  await submit();
+  expect(mocks.popToRoot).not.toHaveBeenCalled();
+  expect(renderer.root.findAllByType("SubmitForm")).toHaveLength(0);
+  expect(renderer.root.findByType("Detail").props.navigationTitle).toBe(
+    "Regression test",
+  );
+  const toast = mocks.showToast.mock.calls.find(
+    ([options]) => options.title === "Task created",
+  )![0];
+  let finishOpening!: () => void;
+  mocks.open.mockReturnValueOnce(
+    new Promise<void>((resolve) => {
+      finishOpening = resolve;
+    }),
+  );
+  const opening = toast.primaryAction.onAction();
+  expect(mocks.open).toHaveBeenCalledWith("https://example.com/tasks/99");
+  expect(mocks.popToRoot).not.toHaveBeenCalled();
+  finishOpening();
+  await opening;
+  expect(mocks.popToRoot).toHaveBeenCalledTimes(1);
+});
+
+it("reports opening failures without discarding the created task", async () => {
+  await mount();
+  await submit();
+  const toast = mocks.showToast.mock.calls.find(
+    ([options]) => options.title === "Task created",
+  )![0];
+  mocks.open.mockRejectedValueOnce(new Error("Browser unavailable"));
+  await toast.primaryAction.onAction();
+  expect(mocks.popToRoot).not.toHaveBeenCalled();
+  expect(mocks.showToast).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      title: "Could not open Vikunja",
+      message: "Browser unavailable",
+    }),
+  );
+  expect(renderer.root.findByType("Detail")).toBeDefined();
+});
+
+it("also offers opening the task and dismissing from the success screen", async () => {
+  await mount();
+  await submit();
+  const actions = renderer.root.findAllByType("Action");
+  await actions
+    .find((action) => action.props.title === "Open in Vikunja")!
+    .props.onAction();
+  expect(mocks.open).toHaveBeenCalledWith("https://example.com/tasks/99");
+  mocks.open.mockClear();
+  mocks.popToRoot.mockClear();
+  await actions
+    .find((action) => action.props.title === "Done")!
+    .props.onAction();
+  expect(mocks.open).not.toHaveBeenCalled();
+  expect(mocks.popToRoot).toHaveBeenCalledTimes(1);
 });

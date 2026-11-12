@@ -1,5 +1,12 @@
 # Changelog
 
+## [Fix success toast action] - 2026-11-12
+
+- Keep Create Task active on a confirmation screen so SuperCmd can invoke the success toast's callback.
+- Open the newly created task directly and wait for the browser-open request before returning to the launcher.
+- Show browser-opening errors and offer Open in Vikunja / Done actions on the confirmation screen.
+- Add regression tests covering callback lifetime, task URLs, opening failures, and explicit dismissal.
+
 ## [Fix initial project selection] - 2026-11-12
 
 - Keep Create Task's visible project and submitted project in sync, including when SuperCmd omits an untouched dropdown value.

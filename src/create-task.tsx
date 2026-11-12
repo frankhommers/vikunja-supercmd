@@ -3,6 +3,7 @@ import {
   Action,
   ActionPanel,
   Form,
+  Detail,
   showToast,
   Toast,
   open,
@@ -21,6 +22,7 @@ import {
   addLabelsToTask,
   Project,
   Label,
+  Task,
 } from "./api";
 import { PRIORITY_MAP } from "./helpers/priorities";
 
@@ -34,6 +36,7 @@ export default function CreateTask(
   const [labels, setLabels] = useState<Label[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedProjectId, setSelectedProjectId] = useState("");
+  const [createdTask, setCreatedTask] = useState<Task | null>(null);
   const argTitle = props.arguments.title?.trim() ?? "";
   const [prefillTitle, setPrefillTitle] = useState(argTitle);
   const [prefillReady, setPrefillReady] = useState(!!argTitle);
@@ -83,6 +86,19 @@ export default function CreateTask(
     }
   }, []);
 
+  async function openCreatedTask(taskId: number) {
+    try {
+      await open(`${getBaseUrl()}/tasks/${taskId}`);
+      await popToRoot();
+    } catch (error) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: "Could not open Vikunja",
+        message: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
+  }
+
   async function handleSubmit(values: {
     title: string;
     description: string;
@@ -124,18 +140,18 @@ export default function CreateTask(
         await addLabelsToTask(task.id, numericLabelIds);
       }
 
-      showToast({
+      // Keep this command alive while its toast action can still be clicked.
+      // SuperCmd's toast callback belongs to the current extension host.
+      setCreatedTask(task);
+      await showToast({
         style: Toast.Style.Success,
         title: "Task created",
         message: task.title,
         primaryAction: {
           title: "Open in Vikunja",
-          onAction: () => {
-            open(`${getBaseUrl()}/projects/${projectId}`);
-          },
+          onAction: () => openCreatedTask(task.id),
         },
       });
-      popToRoot();
     } catch (error) {
       showToast({
         style: Toast.Style.Failure,
@@ -143,6 +159,26 @@ export default function CreateTask(
         message: error instanceof Error ? error.message : "Unknown error",
       });
     }
+  }
+
+  if (createdTask) {
+    return (
+      <Detail
+        navigationTitle={createdTask.title}
+        markdown={
+          "# Task created\n\nOpen the task in Vikunja, or choose Done to return to the launcher."
+        }
+        actions={
+          <ActionPanel>
+            <Action
+              title="Open in Vikunja"
+              onAction={() => openCreatedTask(createdTask.id)}
+            />
+            <Action title="Done" onAction={() => popToRoot()} />
+          </ActionPanel>
+        }
+      />
+    );
   }
 
   return (
